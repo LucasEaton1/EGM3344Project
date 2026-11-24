@@ -1,0 +1,106 @@
+function plotDeformedFrame(frame, U, wfunc, scale)
+% PLOTDEFORMEDFRAME  Draws the original frame (dashed grey), the deformed
+% frame (blue) and, optionally, the distributed load (red) on the loaded members.
+%
+%   plotDeformedFrame(frame, U)                 frame only
+%   plotDeformedFrame(frame, U, wfunc)          frame + load
+%   plotDeformedFrame(frame, U, wfunc, scale)   your own magnification
+%
+%   frame : the frame struct (frameInput1 ... frameInput4)
+%   U     : full displacement vector, nDOF x 1 (fixed DOFs = 0)
+%   wfunc : weight function, e.g. W{1}  (use [] to skip the load)
+%   scale : displacement magnification (optional)
+
+if nargin < 3, wfunc = []; end
+
+frameSize = max(max(frame.nodes) - min(frame.nodes));
+
+% ---- how much to magnify the displacements so you can see them ----
+% Uses the largest displacement ANYWHERE along the members (from the shape
+% functions, including the bending caused by joint rotations), not just at
+% the nodes. Otherwise frames whose nodes barely move get over-magnified.
+if nargin < 4 || isempty(scale)
+    rr = linspace(0, 1, 30);
+    maxDisp = 0;
+    for e = 1:frame.nElem
+        [Le, ~, ~, dofs] = elementGeometry(frame, e);
+        [~, T] = elementStiffness(frame, e);
+        dL = T * U(dofs);
+        uL = (1-rr)*dL(1) + rr*dL(4);
+        vL = (1 - 3*rr.^2 + 2*rr.^3)*dL(2) + Le*(rr - 2*rr.^2 + rr.^3)*dL(3) ...
+           + (3*rr.^2 - 2*rr.^3)*dL(5)     + Le*(-rr.^2 + rr.^3)*dL(6);
+        maxDisp = max(maxDisp, max(sqrt(uL.^2 + vL.^2)));
+    end
+    if maxDisp > 0
+        scale = 0.1 * frameSize / maxDisp;
+    else
+        scale = 1;
+    end
+end
+
+figure('Color', 'w'); hold on; axis equal; grid on;
+r = linspace(0, 1, 30);                      % 30 points along each member
+
+for e = 1:frame.nElem
+    [Le, c, s, dofs] = elementGeometry(frame, e);
+    [~, T] = elementStiffness(frame, e);
+    dL = T * U(dofs);                        % member displacements in local axes
+    n1 = frame.elements(e, 1);
+    x0 = frame.nodes(n1, 1);  y0 = frame.nodes(n1, 2);
+
+    % original member
+    plot(x0 + c*r*Le, y0 + s*r*Le, '--', 'Color', [0.6 0.6 0.6]);
+
+    % deformed member, using the shape functions
+    uL = (1-r)*dL(1) + r*dL(4);                                   % axial
+    vL = (1 - 3*r.^2 + 2*r.^3)*dL(2) + Le*(r - 2*r.^2 + r.^3)*dL(3) ...
+       + (3*r.^2 - 2*r.^3)*dL(5)     + Le*(-r.^2 + r.^3)*dL(6);   % bending
+    xl = r*Le + scale*uL;
+    yl = scale*vL;
+    plot(x0 + c*xl - s*yl, y0 + s*xl + c*yl, 'b', 'LineWidth', 2);
+end
+
+% ---- distributed load on the loaded members ----
+if ~isempty(wfunc)
+    % find the biggest load on any loaded member, so all are drawn to one scale
+    wMax = 0;
+    for e = frame.loadedElements
+        [Le, c] = elementGeometry(frame, e);
+        n1 = frame.elements(e, 1);
+        xs =frame.nodes(n1, 1) + c*linspace(0, Le, 200);
+        wMax = max(wMax, max(abs(wfunc(xs))));
+    end
+    loadScale = 0.15 * frameSize / wMax;     % tallest load = 15% of frame size
+
+    for e = frame.loadedElements
+        [Le, c, s] = elementGeometry(frame, e);
+        n1 = frame.elements(e, 1);
+        x0 = frame.nodes(n1, 1);  y0 = frame.nodes(n1, 2);
+
+        % smooth outline of the load, drawn above the member
+        rr = linspace(0, 1, 200);
+        xm = x0 + c*rr*Le;   ym = y0 + s*rr*Le;   % points on the member
+        h  = loadScale * wfunc(xm);               % height of load at each point
+        plot(xm, ym + h, 'r', 'LineWidth', 1.5);
+
+        % downward arrows from the outline to the member
+        ra = linspace(0, 1, 9);
+        xa = x0 + c*ra*Le;   ya = y0 + s*ra*Le;
+        ha = loadScale * wfunc(xa);
+        quiver(xa, ya + ha, zeros(size(xa)), -ha, 0, 'r', 'MaxHeadSize', 0.3);
+    end
+    text(mean(frame.nodes(:,1)), max(frame.nodes(:,2)) + 0.2*frameSize, ...
+         sprintf('max load = %.1f kN/m', wMax/1e3), ...
+         'Color', 'r', 'HorizontalAlignment', 'center');
+end
+
+% nodes and node numbers
+plot(frame.nodes(:,1), frame.nodes(:,2), 'ko', 'MarkerFaceColor', 'k');
+for nd = 1:size(frame.nodes, 1)
+    text(frame.nodes(nd,1) + 0.1, frame.nodes(nd,2) + 0.2, num2str(nd));
+end
+
+title(sprintf('Deformed frame (displacements magnified %.0fx)', scale));
+xlabel('x (m)'); ylabel('y (m)');
+hold off;
+end
