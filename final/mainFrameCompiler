@@ -1,0 +1,83 @@
+% MAIN  Runs the full frame analysis and plots the result.
+% Change the options below, then press Run (or type  main  in the Command Window).
+clearvars; clc; close all;
+
+%% ===================== OPTIONS =====================
+frameNumber = 4;            % which frame input: 1, 2, 3 or 4
+method      = 'trapezoid';    % 'simpson' or 'trapezoid'
+loadNumber  = 5;            % which weight function: 1 to 5
+n           = 20;           % slices per integral (must be EVEN for Simpson)
+magnify     = [];           % [] = automatic, or a number like 200
+%% ===================================================
+
+%% 1. Frame
+switch frameNumber
+    case 1, frame = frameInput1();
+    case 2, frame = frameInput2();
+    case 3, frame = frameInput3();
+    case 4, frame = frameInput4();
+    otherwise, error('frameNumber must be 1, 2, 3 or 4.');
+end
+
+%% 2. Weight function
+W = weightFunctions();
+if loadNumber < 1 || loadNumber > numel(W)
+    error('loadNumber must be 1 to %d.', numel(W));
+end
+wfunc = W{loadNumber};
+
+%% 3. Global stiffness matrix
+K = assembleStiffness(frame);
+
+%% 4. Load vector
+switch lower(method)
+    case 'simpson'
+        if mod(n, 2) ~= 0
+            error('n must be even for Simpson''s rule.');
+        end
+        [F, flopsLoad] = buildLoadVectorSimpson(frame, wfunc, n);
+    case 'trapezoid'
+        [F, flopsLoad] = buildLoadVectorTrapezoid(frame, wfunc, n);
+    otherwise
+        error('method must be ''simpson'' or ''trapezoid''.');
+end
+
+%% 5. Apply supports
+[Kff, Ff, freeDOF] = applyBoundaryConditions(K, F, frame);
+fixedDOF = setdiff(1:frame.nDOF, freeDOF);
+
+%% 6. Solve Kff * u = Ff with LU
+[L, Uf] = lufact(Kff);          % Kff = L * Uf
+y = forwardsub(L, Ff);          % solve L * y  = Ff
+u = backsub(Uf, y);             % solve Uf * u = y
+
+U = zeros(frame.nDOF, 1);       % full displacement vector
+U(freeDOF) = u;                 % fixed DOFs stay 0
+
+%% 7. Reactions
+R = K*U - F;
+
+%% 8. Print results
+fprintf('===== RESULTS =====\n');
+fprintf('Frame %d | Load shape %d | %s | n = %d\n', frameNumber, loadNumber, method, n);
+fprintf('FLOPs to build F: %d\n\n', flopsLoad);
+
+fprintf('%-5s %14s %14s %14s\n', 'Node', 'ux (m)', 'uy (m)', 'rot (rad)');
+for nd = 1:frame.nNodes
+    fprintf('%-5d %14.4e %14.4e %14.4e\n', nd, U(3*nd-2), U(3*nd-1), U(3*nd));
+end
+
+fprintf('\nReactions:\n');
+dofName = {'Rx (N)', 'Ry (N)', 'M (N*m)'};
+for d = fixedDOF
+    nd   = ceil(d/3);           % node this DOF belongs to
+    type = d - 3*(nd - 1);      % 1 = x, 2 = y, 3 = rotation
+    fprintf('  Node %d  %-8s = %14.3f\n', nd, dofName{type}, R(d));
+end
+
+fprintf('\nCheck vs MATLAB backslash (should be tiny): %.2e\n', ...
+    norm(u - Kff\Ff) / norm(u));
+
+%% 9. Plot the deformed frame and the load
+plotDeformedFrame(frame, U, wfunc, magnify);
+title(sprintf('Frame %d, load %d, %s', frameNumber, loadNumber, method));
