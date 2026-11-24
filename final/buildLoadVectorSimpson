@@ -1,0 +1,52 @@
+function [F, flopsTotal] = buildLoadVectorSimpson(frame, wfunc, n)
+% BUILDLOADVECTORSIMPSON  Builds the global force vector F from a
+% distributed load, using the group's simpson to do the integrals.
+%
+% Inputs:
+%   frame : the frame struct (from frameInput4 etc.)
+%   wfunc : the weight function, e.g. W{1} from weightFunctions()
+%           takes global x (m), returns load (N/m)
+%   n     : number of slices for each Simpson integral (MUST be even, e.g. 20)
+%
+% Outputs:
+%   F          : nDOF x 1 force vector (forces and moments at every node)
+%   flopsTotal : total FLOPs used by all the Simpson calls
+
+F = zeros(frame.nDOF, 1);   % start with no force anywhere
+flopsTotal = 0;
+
+for e = frame.loadedElements                    % only the top beams
+    % ---- 1. Geometry of this beam ----
+    [Le, c, s, dofs] = elementGeometry(frame, e);   % length, direction, DOF slots
+    [~, T] = elementStiffness(frame, e);            % rotation matrix (local <-> global)
+    x1 = frame.nodes(frame.elements(e, 1), 1);      % global x of the beam's start node
+
+    % ---- 2. The load along this beam ----
+    % xa = distance along the beam from its start node (0 to Le)
+    wAt = @(xa) wfunc(x1 + c*xa);   % load at that point (convert xa to global x)
+    qx  = @(xa) -wAt(xa) * s;       % part of the load pushing ALONG the beam
+    qy  = @(xa) -wAt(xa) * c;       % part of the load pushing ACROSS the beam
+
+    % ---- 3. Shape functions ----
+    % Each one says how much of a load at xa a given node "feels".
+    Na1 = @(xa) 1 - xa/Le;                          % axial, start node
+    Na2 = @(xa) xa/Le;                              % axial, end node
+    N1  = @(xa) 1 - 3*(xa/Le).^2 + 2*(xa/Le).^3;    % shear, start node
+    N2  = @(xa) xa - 2*xa.^2/Le + xa.^3/Le^2;       % moment, start node
+    N3  = @(xa) 3*(xa/Le).^2 - 2*(xa/Le).^3;        % shear, end node
+    N4  = @(xa) -xa.^2/Le + xa.^3/Le^2;             % moment, end node
+
+    % ---- 4. Integrate load x shape function with Simpson's rule ----
+    fLocal = zeros(6, 1);
+    [fLocal(1), f1] = simpson(@(xa) qx(xa) .* Na1(xa), 0, Le, n); % force along, start
+    [fLocal(2), f2] = simpson(@(xa) qy(xa) .* N1(xa),  0, Le, n); % force across, start
+    [fLocal(3), f3] = simpson(@(xa) qy(xa) .* N2(xa),  0, Le, n); % moment, start
+    [fLocal(4), f4] = simpson(@(xa) qx(xa) .* Na2(xa), 0, Le, n); % force along, end
+    [fLocal(5), f5] = simpson(@(xa) qy(xa) .* N3(xa),  0, Le, n); % force across, end
+    [fLocal(6), f6] = simpson(@(xa) qy(xa) .* N4(xa),  0, Le, n); % moment, end
+    flopsTotal = flopsTotal + f1 + f2 + f3 + f4 + f5 + f6;
+
+    % ---- 5. Rotate to global x/y and add into F ----
+    F(dofs) = F(dofs) + T' * fLocal;
+end
+end
