@@ -1,0 +1,18 @@
+function W = weightFunctions()
+% WEIGHTFUNCTIONS  Five distributed loads w(x) in N/m, x = global x in m.
+% Defined over x = 0 to 12. Every shape is nonzero everywhere from 0 to 12.
+%
+% Usage:  W = weightFunctions();
+%         frame.wfunc = W{3};      % note curly braces
+
+g = @(x, c) exp(-(x - c).^2 / (2*0.36^2));         % one skinny peak centered at c
+hump = @(x) (x/3).^4 .* exp(4*(1 - x/3));           % sharp hump: 1 at x = 3, ~0 far right
+
+W = {
+    @(x) 5e3 + 15e3*x/12                                     % 1: linear, sloping up to the right
+    @(x) 5e3 + 15e3*x.*(12 - x)/36                           % 2: upside-down bowl, peak at x = 6
+    @(x) 0.5e3 + 19.5e3*hump(x)                              % 3: big hump on the left (peak 20 kN/m at x = 3), almost nothing on the right
+    @(x) 0.5e3 + 19.5e3*hump(12 - x)                         % 4: mirror of 3, big hump on the right (peak at x = 9)
+    @(x) 5e3 + 15e3*(g(x,1.5) + g(x,4.5) + g(x,7.5) + g(x,10.5))  % 5: four skinny tall peaks
+    };
+end
