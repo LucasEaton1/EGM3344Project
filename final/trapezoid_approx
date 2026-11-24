@@ -1,0 +1,9 @@
+function [T, flops] = trapezoid_approx(f, a, b, n)
+h = (b - a) / n;
+t = linspace(a, b, n + 1);
+y = f(t);
+T = h * (sum(y) - (y(1) + y(end)) / 2);
+
+% FLOP count (excluding function evaluation and linspace)
+flops = n + 6;
+end
