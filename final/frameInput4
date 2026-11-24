@@ -1,0 +1,17 @@
+function frame = frameInput4()
+
+frame.nodes = [0 0; 3 0; 6 0; 9 0; 12 0; 3 3; 6 3; 9 3];
+frame.elements = [1 2; 2 3; 3 4; 4 5; 2 6; 3 7; 4 8; 6 7; 7 8; 3 6; 3 8; 1 6; 5 8];
+
+frame.E = 200e9; %young's modulus
+frame.A = 9.5e-3; %cross sectional area (m^2)
+frame.I = 1.65e-4; %second moment of area
+
+frame.loadedElements = [8 9]; %only members 8 and 9 carry the distributed load
+
+frame.supports = [1 1 1 1; 5 1 1 1]; %node, fix x?, fix y?, fix rotation? 1=yes 0 =no
+
+frame.nNodes = size(frame.nodes, 1); %how many rows does frame.nodes have?
+frame.nElem = size(frame.elements, 1); %how many rows does frame.elements?
+frame.nDOF = 3 * frame.nNodes;
+end
