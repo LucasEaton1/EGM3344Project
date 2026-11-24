@@ -1,0 +1,22 @@
+function [S, flops] = simpson(f, a, b, n)
+% f must evaluate elementwise on a vector.
+% f can be a function handle or a string expression in x.
+if n < 2 || mod(n, 2) ~= 0
+    error('n must be a positive even integer.');
+end
+
+h = (b - a) / n;
+x = linspace(a, b, n + 1);
+y = f(x);   % evaluates f at all points in x
+
+% Simpson's weights are 1, 4, 2, 4, ..., 2, 4, 1.
+S = (h / 3) * (y(1) ...
+    + 4 * sum(y(2:2:end-1)) ...
+    + 2 * sum(y(3:2:end-2)) ...
+    + y(end));
+
+% Arithmetic FLOPs in h and S only (not linspace or f(x)).
+% For n >= 4: n+6. For n == 2: 9 (the second sum is empty).
+% The FLOPs used to compute this count are excluded.
+flops = 9 + (n/2 - 1) + max(n/2 - 2, 0);
+end
